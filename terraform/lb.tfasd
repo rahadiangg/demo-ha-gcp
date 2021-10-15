@@ -1,0 +1,4 @@
+module "gce-lb-http" {
+  source            = "GoogleCloudPlatform/lb-http/google"
+  version = "6.1.0"
+}
