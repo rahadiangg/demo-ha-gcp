@@ -8,12 +8,12 @@ terraform {
 }
 
 provider "google" {
-  credentials = file("test-demo-ha-gcp-ec8f765a1ef0.json")
+  # credentials = file("file_credensial_gcp.json") # atau bisa juga menggunakan command 'gcloud auth application-default login
   project = var.project_id
 }
 
 provider "google-beta" {
-  credentials = file("test-demo-ha-gcp-ec8f765a1ef0.json")
+  # credentials = file("file_credensial_gcp.json") # atau bisa juga menggunakan command 'gcloud auth application-default login
   project = var.project_id
 }
 
