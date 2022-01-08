@@ -463,7 +463,7 @@ resource "google_compute_region_instance_group_manager" "users-service-mig-id" {
   }
 
   target_pools = []
-  target_size  = 2
+  target_size  = 3
 
   named_port {
     name = "http"
@@ -576,7 +576,7 @@ resource "google_compute_region_instance_group_manager" "users-service-mig-us" {
   }
 
   target_pools = []
-  target_size  = 0
+  target_size  = 3
 
   named_port {
     name = "http"
