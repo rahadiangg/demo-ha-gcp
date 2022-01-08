@@ -12,18 +12,14 @@ const db_write_host = process.env.db_write_host;
 //read
 const db_read_host = process.env.db_read_host;
 
-const db = new Sequelize(db_name, null, null, {
+const db = new Sequelize(db_name, db_user, db_pass, {
     dialect: db_dialect,
     replication: {
         read:{
-            host: db_read_host,
-            username: db_user,
-            password: db_pass
+            host: db_read_host
         },
         write: {
-            host: db_write_host,
-            username: db_user,
-            password: db_pass
+            host: db_write_host
         }
     }
 });
