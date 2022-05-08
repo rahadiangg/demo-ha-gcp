@@ -30,7 +30,7 @@ func main() {
 	router.POST("/payments", paymentController.Save)
 
 	server := &http.Server{
-		Addr:    "localhost:9000",
+		Addr:    ":9000",
 		Handler: router,
 	}
 
