@@ -1,9 +1,0 @@
-FROM locustio/locust
-
-COPY config-amerika.py /mnt/locust/
-
-
-ENTRYPOINT [ "locust" ]
-CMD [ "-f", "/mnt/locust/config-amerika.py" ]
-
-EXPOSE 8089
