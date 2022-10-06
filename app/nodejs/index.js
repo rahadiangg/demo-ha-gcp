@@ -1,9 +1,13 @@
+import * as dotenv from 'dotenv';
+dotenv.config();
+
 import express from "express";
 import db from "./config/database.js";
 import router from "./routes/index.js";
 
+
 const app = express(); 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.APP_PORT || 8080;
 try {
     await db.authenticate();
     console.log('Database OK');

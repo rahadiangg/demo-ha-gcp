@@ -1,25 +1,34 @@
 import { Sequelize } from "sequelize";
 
-const db_name = process.env.db_name;
-const db_dialect = process.env.db_dialect || "mysql";
+import * as dotenv from 'dotenv';
+dotenv.config();
 
-const db_user = process.env.db_user;
-const db_pass = process.env.db_pass;
+const DB_NAME = process.env.DB_NAME;
+const DB_DIALECT = process.env.DB_DIALECT.toString();
+
+console.log(DB_DIALECT);
+
+const DB_USER = process.env.DB_USER;
+const DB_PASS = process.env.DB_PASS;
 
 // write
-const db_write_host = process.env.db_write_host;
+const DB_WRITE_HOST =  process.env.DB_WRITE_HOST;
 
 //read
-const db_read_host = process.env.db_read_host;
+const DB_READ_HOST = process.env.DB_READ_HOST.split(";");
+var DB_READ_HOST_ARRAY = [];
 
-const db = new Sequelize(db_name, db_user, db_pass, {
-    dialect: db_dialect,
+for (let index = 0; index < DB_READ_HOST.length; index++) {
+    var temp = {"host": DB_READ_HOST[index]}
+    DB_READ_HOST_ARRAY.push(temp);
+}
+
+const db = new Sequelize(DB_NAME, DB_USER, DB_PASS, {
+    dialect: DB_DIALECT,
     replication: {
-        read:{
-            host: db_read_host
-        },
+        read: DB_READ_HOST_ARRAY,
         write: {
-            host: db_write_host
+            host: DB_WRITE_HOST
         }
     }
 });
