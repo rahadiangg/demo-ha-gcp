@@ -28,6 +28,31 @@ resource "random_id" "suffix" {
 #     name                            = "default"
 #     routing_mode                    = "REGIONAL"
 # }
+
+resource "google_compute_network" "private_network" {
+  provider = google-beta
+
+  name = "private-network"
+}
+
+resource "google_compute_global_address" "private_ip_address" {
+  provider = google-beta
+
+  name          = "private-ip-address"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.private_network.id
+}
+
+resource "google_service_networking_connection" "private_vpc_connection" {
+  provider = google-beta
+
+  network                 = google_compute_network.private_network.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
+}
+
 // ============================== End VPC =====================================
 
 
@@ -40,12 +65,14 @@ resource "google_sql_database_instance" "users-service-master" {
     database_version              = "MYSQL_8_0"
     deletion_protection           = false
 
+    depends_on = [google_service_networking_connection.private_vpc_connection]
+
     settings {
         tier                        = "db-f1-micro"
         availability_type           = "REGIONAL"
         ip_configuration {
             ipv4_enabled    = false
-            private_network = "projects/${var.project_id}/global/networks/default"
+            private_network = google_compute_network.private_network.id
         }
 
         location_preference {
@@ -78,6 +105,8 @@ resource "google_sql_database_instance" "users-service-replica-id" {
   database_version     = "MYSQL_8_0"
   deletion_protection  = false
 
+  depends_on = [google_service_networking_connection.private_vpc_connection]
+
   replica_configuration {
     failover_target = false
   }
@@ -87,7 +116,7 @@ resource "google_sql_database_instance" "users-service-replica-id" {
     availability_type = "ZONAL"
     ip_configuration {
       ipv4_enabled    = false
-      private_network = "projects/${var.project_id}/global/networks/default"
+      private_network = google_compute_network.private_network.id
     }
     location_preference {
       zone = "asia-southeast2-b"
@@ -102,6 +131,8 @@ resource "google_sql_database_instance" "users-service-replica-us" {
   database_version     = "MYSQL_8_0"
   deletion_protection  = false
 
+  depends_on = [google_service_networking_connection.private_vpc_connection]
+
   replica_configuration {
     failover_target = false
   }
@@ -111,7 +142,7 @@ resource "google_sql_database_instance" "users-service-replica-us" {
     availability_type = "ZONAL"
     ip_configuration {
       ipv4_enabled    = false
-      private_network = "projects/${var.project_id}/global/networks/default"
+      private_network = google_compute_network.private_network.id
     }
     location_preference {
       zone = "us-central1-a"
@@ -126,12 +157,14 @@ resource "google_sql_database_instance" "payments-service-id-master" {
     database_version              = "MYSQL_8_0"
     deletion_protection           = false
 
+    depends_on = [google_service_networking_connection.private_vpc_connection]
+
     settings {
         tier                        = "db-f1-micro"
         availability_type           = "REGIONAL"
         ip_configuration {
             ipv4_enabled    = false
-            private_network = "projects/${var.project_id}/global/networks/default"
+            private_network = google_compute_network.private_network.id
         }
 
         location_preference {
@@ -173,7 +206,7 @@ resource "google_sql_database" "payments-service-id" {
 #     availability_type = "ZONAL"
 #     ip_configuration {
 #       ipv4_enabled    = false
-#       private_network = "projects/${var.project_id}/global/networks/default"
+#       private_network = google_compute_network.private_network.id
 #     }
 #     location_preference {
 #       zone = "asia-southeast2-b"
@@ -188,12 +221,14 @@ resource "google_sql_database_instance" "payments-service-us-master" {
     database_version              = "MYSQL_8_0"
     deletion_protection           = false
 
+    depends_on = [google_service_networking_connection.private_vpc_connection]
+
     settings {
         tier                        = "db-f1-micro"
         availability_type           = "REGIONAL"
         ip_configuration {
             ipv4_enabled    = false
-            private_network = "projects/${var.project_id}/global/networks/default"
+            private_network = google_compute_network.private_network.id
         }
 
         location_preference {
@@ -235,7 +270,7 @@ resource "google_sql_database" "payments-service-us" {
 #     availability_type = "ZONAL"
 #     ip_configuration {
 #       ipv4_enabled    = false
-#       private_network = "projects/${var.project_id}/global/networks/default"
+#       private_network = google_compute_network.private_network.id
 #     }
 #     location_preference {
 #       zone = "us-central1-b"
@@ -253,7 +288,13 @@ module "gce-container-locust-id" {
   source = "github.com/terraform-google-modules/terraform-google-container-vm"
 
   container = {
-    image="asia.gcr.io/test-demo-ha-gcp/locust-id-geprek-kun"
+    image= var.locust_load_test
+    env = [
+      {
+        name = "COUNTRY_CODE"
+        value = "id"
+      },
+    ]
   }
 
   restart_policy = "Always"
@@ -263,7 +304,13 @@ module "gce-container-locust-us" {
   source = "github.com/terraform-google-modules/terraform-google-container-vm"
 
   container = {
-    image="asia.gcr.io/test-demo-ha-gcp/locust-us-geprek-kun"
+    image= var.locust_load_test
+    env = [
+      {
+        name = "COUNTRY_CODE"
+        value = "us"
+      },
+    ]
   }
 
   restart_policy = "Always"
@@ -290,8 +337,9 @@ resource "google_compute_instance" "locust-id" {
     }
 
     network_interface {
-        network           = "default"
+        network           = google_compute_network.private_network.self_link
         access_config {
+          network_tier = "PREMIUM"
         }
     }
 
@@ -305,7 +353,7 @@ resource "google_compute_instance" "locust-id" {
 
 # # google_compute_instance.locust-us:
 resource "google_compute_instance" "locust-us" {
-    name                 = "locust-indonesia"
+    name                 = "locust-us"
     machine_type         = "g1-small"
     zone                 = "us-central1-c"
     tags                 = [
@@ -324,8 +372,9 @@ resource "google_compute_instance" "locust-us" {
     }
 
     network_interface {
-        network           = "default"
+        network           = google_compute_network.private_network.id
         access_config {
+          network_tier = "PREMIUM"
         }
     }
 
@@ -351,7 +400,7 @@ resource "google_compute_health_check" "http-health-check" {
     unhealthy_threshold = 3
 
     http_health_check {
-        port         = 80
+        port         = 8080
         proxy_header = "NONE"
         request_path = "/"
     }
@@ -369,35 +418,39 @@ module "gce-container-users-service-id" {
   source = "github.com/terraform-google-modules/terraform-google-container-vm"
 
   container = {
-    image="asia.gcr.io/test-demo-ha-gcp/demo-ha-gcp"
+    image= var.app_image
     env = [
       {
-        name = "db_name"
+        name = "DB_NAME"
         value = google_sql_database.users-service.name
       },
       {
-        name = "db_user"
+        name = "DB_USER"
         value = google_sql_user.users-service.name
       },
       {
-        name = "db_pass"
+        name = "DB_PASS"
         value = google_sql_user.users-service.password
       },
       {
-        name = "db_write_host"
+        name = "DB_WRITE_HOST"
         value = google_sql_database_instance.users-service-master.private_ip_address
       },
       {
-        name = "db_read_host"
+        name = "DB_READ_HOST"
         value = google_sql_database_instance.users-service-replica-id.private_ip_address
       },
       {
-        name = "country_code"
-        value = "xx"
+        name = "COUNTRY_CODE"
+        value = "id"
       },
       {
-        name = "PORT"
-        value = 80
+        name = "APP_PORT"
+        value = 8080
+      },
+      {
+        name = "DB_DIALECT"
+        value = "mysql"
       },
     ]
   }
@@ -428,8 +481,9 @@ resource "google_compute_instance_template" "users-service-id-template" {
     }
 
     network_interface {
-      network = "default"
+      network = google_compute_network.private_network.self_link
       access_config {
+        network_tier = "PREMIUM"
       }
     }
 
@@ -459,15 +513,15 @@ resource "google_compute_region_instance_group_manager" "users-service-mig-id" {
   distribution_policy_zones  = ["asia-southeast2-a", "asia-southeast2-b"]
 
   version {
-    instance_template = google_compute_instance_template.users-service-id-template.self_link
+    instance_template = google_compute_instance_template.users-service-id-template.id
   }
 
   target_pools = []
-  target_size  = 3
+  target_size  = 3 
 
   named_port {
     name = "http"
-    port = 80
+    port = 8080
   }
 
   auto_healing_policies {
@@ -483,35 +537,39 @@ module "gce-container-users-service-us" {
   source = "github.com/terraform-google-modules/terraform-google-container-vm"
 
   container = {
-    image="asia.gcr.io/test-demo-ha-gcp/demo-ha-gcp"
+    image= var.app_image
     env = [
       {
-        name = "db_name"
+        name = "DB_NAME"
         value = google_sql_database.users-service.name
       },
       {
-        name = "db_user"
+        name = "DB_USER"
         value = google_sql_user.users-service.name
       },
       {
-        name = "db_pass"
+        name = "DB_PASS"
         value = google_sql_user.users-service.password
       },
       {
-        name = "db_write_host"
+        name = "DB_WRITE_HOST"
         value = google_sql_database_instance.users-service-master.private_ip_address
       },
       {
-        name = "db_read_host"
+        name = "DB_READ_HOST"
         value = google_sql_database_instance.users-service-replica-us.private_ip_address
       },
       {
-        name = "country_code"
-        value = "xx"
+        name = "COUNTRY_CODE"
+        value = "us"
       },
       {
-        name = "PORT"
-        value = 80
+        name = "APP_PORT"
+        value = 8080
+      },
+      {
+        name = "DB_DIALECT"
+        value = "mysql"
       },
     ]
   }
@@ -541,8 +599,9 @@ resource "google_compute_instance_template" "users-service-us-template" {
     }
 
     network_interface {
-      network = "default"
+      network = google_compute_network.private_network.self_link
       access_config {
+        network_tier = "PREMIUM"
       }
     }
 
@@ -572,15 +631,15 @@ resource "google_compute_region_instance_group_manager" "users-service-mig-us" {
   distribution_policy_zones  = ["us-central1-a", "us-central1-b"]
 
   version {
-    instance_template = google_compute_instance_template.users-service-us-template.self_link
+    instance_template = google_compute_instance_template.users-service-us-template.id
   }
 
   target_pools = []
-  target_size  = 3
+  target_size  = 0 #simulate region outage
 
   named_port {
     name = "http"
-    port = 80
+    port = 8080
   }
 
   auto_healing_policies {
@@ -602,7 +661,7 @@ resource "google_vpc_access_connector" "asia-southeast2-connector" {
     provider = google-beta
     ip_cidr_range  = "10.8.0.0/28"
     name           = "asia-southeast2-connector"
-    network        = "default"
+    network        = google_compute_network.private_network.name
     region         = "asia-southeast2"
     machine_type = "f1-micro"
     max_instances = 3
@@ -613,7 +672,7 @@ resource "google_vpc_access_connector" "us-central1-connector" {
     provider = google-beta
     ip_cidr_range  = "10.9.0.0/28"
     name           = "us-central1-connector"
-    network        = "default"
+    network        = google_compute_network.private_network.name
     region         = "us-central1"
     machine_type = "f1-micro"
     max_instances = 3
@@ -636,31 +695,39 @@ resource "google_cloud_run_service" "payments-service-id" {
   template {
     spec {
       containers {
-        image = "asia.gcr.io/test-demo-ha-gcp/demo-ha-gcp"
+        image = var.app_image
 
         env {
-          name = "db_name"
+          name = "DB_NAME"
           value = google_sql_database.payments-service-id.name
         }
         env {
-          name = "db_user"
+          name = "DB_USER"
           value = google_sql_user.payments-service-id.name
         }
         env {
-          name = "db_pass"
+          name = "DB_PASS"
           value = google_sql_user.payments-service-id.password
         }
         env {
-          name = "db_write_host"
+          name = "DB_WRITE_HOST"
           value = google_sql_database_instance.payments-service-id-master.private_ip_address
         }
         env {
-          name = "db_read_host"
+          name = "DB_READ_HOST"
           value = google_sql_database_instance.payments-service-id-master.private_ip_address
         }
         env {
-          name = "country_code"
+          name = "COUNTRY_CODE"
           value = "id"
+        }
+        env {
+          name = "DB_DIALECT"
+          value = "mysql"
+        }
+        env {
+          name = "APP_PORT"
+          value = 8080
         }
       }
     }
@@ -713,31 +780,39 @@ resource "google_cloud_run_service" "payments-service-us" {
   template {
     spec {
       containers {
-        image = "asia.gcr.io/test-demo-ha-gcp/demo-ha-gcp"
+        image = var.app_image
 
         env {
-          name = "db_name"
+          name = "DB_NAME"
           value = google_sql_database.payments-service-us.name
         }
         env {
-          name = "db_user"
+          name = "DB_USER"
           value = google_sql_user.payments-service-us.name
         }
         env {
-          name = "db_pass"
+          name = "DB_PASS"
           value = google_sql_user.payments-service-us.password
         }
         env {
-          name = "db_write_host"
+          name = "DB_WRITE_HOST"
           value = google_sql_database_instance.payments-service-us-master.private_ip_address
         }
         env {
-          name = "db_read_host"
+          name = "DB_READ_HOST"
           value = google_sql_database_instance.payments-service-us-master.private_ip_address
         }
         env {
-          name = "country_code"
+          name = "COUNTRY_CODE"
           value = "us"
+        }
+        env {
+          name = "DB_DIALECT"
+          value = "mysql"
+        }
+        env {
+          name = "APP_PORT"
+          value = 8080
         }
       }
     }
@@ -903,10 +978,10 @@ module "gce-lb-https" {
   project = var.project_id
   
   target_tags = [
-    "allow-health-check"
+    "health-check"
   ]
 
-  firewall_networks = ["default"]
+  firewall_networks = [google_compute_network.private_network.name]
   url_map           = google_compute_url_map.urlmap.self_link
   create_url_map    = false
   
@@ -921,7 +996,7 @@ module "gce-lb-https" {
     default = {
       description                     = null
       protocol                        = "HTTP"
-      port                            = 80
+      port                            = 8080
       port_name                       = "http"
       timeout_sec                     = 10
       connection_draining_timeout_sec = null
@@ -937,7 +1012,7 @@ module "gce-lb-https" {
         healthy_threshold   = null
         unhealthy_threshold = null
         request_path        = "/"
-        port                = 80
+        port                = 8080
         host                = null
         logging             = null
       }
